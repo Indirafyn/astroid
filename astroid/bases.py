@@ -718,7 +718,7 @@ class Generator(BaseInstance):
     """
 
     # Refactoring type: Move Initialization. Initialize special_attributes during
-    # raw_building bootstrap to avoid deferred class attribute initialization.
+    # raw_building bootstrap instead of during instance initialization.
     special_attributes: objectmodel.GeneratorBaseModel
 
     def __init__(
