@@ -616,6 +616,18 @@ class GeneratorModelTest(unittest.TestCase):
             assert isinstance(
                 bases.AsyncGenerator.special_attributes, objectmodel.AsyncGeneratorModel
             )
+        gen_node = builder.extract_node(
+            """
+        def test():
+            yield
+
+        gen = test()
+        gen #@
+        """
+        )
+        gen_instance = next(gen_node.infer())
+        assert isinstance(gen_instance, bases.Generator)
+        assert isinstance(bases.Generator.special_attributes, objectmodel.GeneratorModel)
 
     def test_model(self) -> None:
         ast_nodes = builder.extract_node("""

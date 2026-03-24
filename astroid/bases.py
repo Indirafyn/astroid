@@ -718,7 +718,7 @@ class Generator(BaseInstance):
     """
 
     # Refactoring type: Move Initialization. special_attributes is initialized during
-    # raw_building bootstrap.
+    # raw_building bootstrap to avoid per-instance assignment.
     special_attributes: objectmodel.GeneratorBaseModel
 
     def __init__(
