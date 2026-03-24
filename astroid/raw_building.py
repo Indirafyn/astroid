@@ -655,8 +655,8 @@ def _astroid_bootstrapping() -> None:
     )
     bases.Generator._proxied = _GeneratorType
     builder.object_build(bases.Generator._proxied, types.GeneratorType)
-    # REFACTOR (Move Initialization): initialize special_attributes during bootstrap
-    # instead of deferring class attribute assignment to instance initialization.
+    # Refactoring type: Move Initialization. Initialize special_attributes during
+    # bootstrap rather than deferring class attribute assignment to instance creation.
     bases.Generator.special_attributes = objectmodel.GeneratorModel()
 
     if hasattr(types, "AsyncGeneratorType"):

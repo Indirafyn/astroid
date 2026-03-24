@@ -717,7 +717,7 @@ class Generator(BaseInstance):
     Proxied class is set once for all in raw_building.
     """
 
-    # REFACTOR (Move Initialization): special_attributes is initialized during
+    # Refactoring type: Move Initialization. Initialize special_attributes during
     # raw_building bootstrap to avoid deferred class attribute initialization.
     special_attributes: objectmodel.GeneratorBaseModel
 

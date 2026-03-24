@@ -609,12 +609,13 @@ class TestContextManagerModel:
 
 class GeneratorModelTest(unittest.TestCase):
     def test_special_attributes_initialized(self) -> None:
-        builder.extract_node(
+        ast_node = builder.extract_node(
             """
         def test():
             yield
         """
         )
+        assert isinstance(ast_node, nodes.FunctionDef)
         assert isinstance(bases.Generator.special_attributes, objectmodel.GeneratorModel)
         if hasattr(types, "AsyncGeneratorType"):
             assert isinstance(
