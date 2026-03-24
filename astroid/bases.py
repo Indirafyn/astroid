@@ -717,9 +717,8 @@ class Generator(BaseInstance):
     Proxied class is set once for all in raw_building.
     """
 
-    # We defer initialization of special_attributes to the __init__ method since the constructor
-    # of GeneratorModel requires the raw_building to be complete
-    # TODO: This should probably be refactored.
+    # Move Initialization: special_attributes is initialized during raw_building
+    # bootstrap to avoid per-instance assignment.
     special_attributes: objectmodel.GeneratorBaseModel
 
     def __init__(
@@ -730,9 +729,6 @@ class Generator(BaseInstance):
         super().__init__()
         self.parent = parent
         self._call_context = copy_context(generator_initial_context)
-
-        # See comment above: this is a deferred initialization.
-        Generator.special_attributes = objectmodel.GeneratorModel()
 
     def infer_yield_types(self) -> Iterator[InferenceResult]:
         yield from self.parent.infer_yield_result(self._call_context)
@@ -758,10 +754,6 @@ class Generator(BaseInstance):
 
 class AsyncGenerator(Generator):
     """Special node representing an async generator."""
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        AsyncGenerator.special_attributes = objectmodel.AsyncGeneratorModel()
 
     def pytype(self) -> Literal["builtins.async_generator"]:
         return "builtins.async_generator"

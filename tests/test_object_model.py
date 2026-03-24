@@ -2,15 +2,17 @@
 # For details: https://github.com/pylint-dev/astroid/blob/main/LICENSE
 # Copyright (c) https://github.com/pylint-dev/astroid/blob/main/CONTRIBUTORS.txt
 
+import types
 import unittest
 import xml
 
 import pytest
 
 import astroid
-from astroid import bases, builder, nodes, objects, util
+from astroid import bases, builder, nodes, objects, raw_building, util
 from astroid.const import PY311_PLUS
 from astroid.exceptions import InferenceError
+from astroid.interpreter import objectmodel
 
 try:
     import six  # type: ignore[import]  # pylint: disable=unused-import
@@ -606,6 +608,28 @@ class TestContextManagerModel:
 
 
 class GeneratorModelTest(unittest.TestCase):
+    def test_special_attributes_initialized(self) -> None:
+        if not raw_building.InspectBuilder.bootstrapped:
+            astroid.MANAGER.bootstrap()
+        generator_model = bases.Generator.special_attributes
+        assert isinstance(generator_model, objectmodel.GeneratorModel)
+        if hasattr(types, "AsyncGeneratorType"):
+            assert isinstance(
+                bases.AsyncGenerator.special_attributes, objectmodel.AsyncGeneratorModel
+            )
+        gen_node = builder.extract_node(
+            """
+        def test():
+            yield
+
+        gen = test()
+        gen #@
+        """
+        )
+        gen_instance = next(gen_node.infer())
+        assert isinstance(gen_instance, bases.Generator)
+        assert bases.Generator.special_attributes is generator_model
+
     def test_model(self) -> None:
         ast_nodes = builder.extract_node("""
         def test():
