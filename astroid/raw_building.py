@@ -682,6 +682,8 @@ def _astroid_bootstrapping() -> None:
         )
         bases.AsyncGenerator._proxied = _AsyncGeneratorType
         builder.object_build(bases.AsyncGenerator._proxied, types.AsyncGeneratorType)
+        # Refactoring type: Move Initialization. Initialize special_attributes during
+        # raw_building bootstrap rather than deferring class attribute assignment.
         bases.AsyncGenerator.special_attributes = objectmodel.AsyncGeneratorModel()
 
     if hasattr(types, "UnionType"):
