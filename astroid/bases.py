@@ -717,8 +717,8 @@ class Generator(BaseInstance):
     Proxied class is set once for all in raw_building.
     """
 
-    # Refactoring type: Move Initialization. Initialize special_attributes during
-    # raw_building bootstrap instead of during instance initialization.
+    # Refactoring type: Move Initialization; special_attributes is initialized during
+    # raw_building bootstrap.
     special_attributes: objectmodel.GeneratorBaseModel
 
     def __init__(
