@@ -25,6 +25,7 @@ from astroid.const import _EMPTY_OBJECT_MARKER, IS_PYPY
 from astroid.nodes import node_classes
 
 if TYPE_CHECKING:
+    from astroid.interpreter import objectmodel
     from astroid.manager import AstroidManager
 
 logger = logging.getLogger(__name__)
@@ -608,6 +609,7 @@ def _astroid_bootstrapping() -> None:
     # this boot strapping is necessary since we need the Const nodes to
     # inspect_build builtins, and then we can proxy Const
     # pylint: disable-next=import-outside-toplevel
+    from astroid.interpreter import objectmodel
     from astroid.manager import AstroidManager
 
     builder = InspectBuilder(AstroidManager())
@@ -653,6 +655,9 @@ def _astroid_bootstrapping() -> None:
     )
     bases.Generator._proxied = _GeneratorType
     builder.object_build(bases.Generator._proxied, types.GeneratorType)
+    # REFACTOR (Move Initialization): initialize special_attributes during bootstrap
+    # instead of deferring class attribute assignment to instance initialization.
+    bases.Generator.special_attributes = objectmodel.GeneratorModel()
 
     if hasattr(types, "AsyncGeneratorType"):
         _AsyncGeneratorType = nodes.ClassDef(
@@ -677,6 +682,7 @@ def _astroid_bootstrapping() -> None:
         )
         bases.AsyncGenerator._proxied = _AsyncGeneratorType
         builder.object_build(bases.AsyncGenerator._proxied, types.AsyncGeneratorType)
+        bases.AsyncGenerator.special_attributes = objectmodel.AsyncGeneratorModel()
 
     if hasattr(types, "UnionType"):
         _UnionTypeType = nodes.ClassDef(
