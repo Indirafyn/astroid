@@ -616,6 +616,7 @@ class GeneratorModelTest(unittest.TestCase):
         """
         )
         assert isinstance(ast_node, nodes.FunctionDef)
+        assert ast_node.is_generator()
         assert isinstance(bases.Generator.special_attributes, objectmodel.GeneratorModel)
         if hasattr(types, "AsyncGeneratorType"):
             assert isinstance(
