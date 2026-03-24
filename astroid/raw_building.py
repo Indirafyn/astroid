@@ -654,8 +654,8 @@ def _astroid_bootstrapping() -> None:
     )
     bases.Generator._proxied = _GeneratorType
     builder.object_build(bases.Generator._proxied, types.GeneratorType)
-    # Refactoring type: Move Initialization. Initialize Generator.special_attributes during
-    # raw_building bootstrap to avoid repeated per-instance initialization.
+    # Note (Refactoring type: Move Initialization): initialize Generator.special_attributes
+    # during raw_building bootstrap to avoid repeated per-instance initialization.
     bases.Generator.special_attributes = objectmodel.GeneratorModel()
 
     if hasattr(types, "AsyncGeneratorType"):
@@ -681,8 +681,9 @@ def _astroid_bootstrapping() -> None:
         )
         bases.AsyncGenerator._proxied = _AsyncGeneratorType
         builder.object_build(bases.AsyncGenerator._proxied, types.AsyncGeneratorType)
-        # Refactoring type: Move Initialization. Initialize AsyncGenerator.special_attributes
-        # during raw_building bootstrap to avoid repeated per-instance initialization.
+        # Note (Refactoring type: Move Initialization): initialize
+        # AsyncGenerator.special_attributes during raw_building bootstrap to avoid repeated
+        # per-instance initialization.
         bases.AsyncGenerator.special_attributes = objectmodel.AsyncGeneratorModel()
 
     if hasattr(types, "UnionType"):
