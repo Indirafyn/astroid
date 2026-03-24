@@ -25,7 +25,6 @@ from astroid.const import _EMPTY_OBJECT_MARKER, IS_PYPY
 from astroid.nodes import node_classes
 
 if TYPE_CHECKING:
-    from astroid.interpreter import objectmodel
     from astroid.manager import AstroidManager
 
 logger = logging.getLogger(__name__)

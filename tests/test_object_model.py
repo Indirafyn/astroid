@@ -611,7 +611,8 @@ class GeneratorModelTest(unittest.TestCase):
     def test_special_attributes_initialized(self) -> None:
         if not raw_building.InspectBuilder.bootstrapped:
             astroid.MANAGER.bootstrap()
-        assert isinstance(bases.Generator.special_attributes, objectmodel.GeneratorModel)
+        generator_model = bases.Generator.special_attributes
+        assert isinstance(generator_model, objectmodel.GeneratorModel)
         if hasattr(types, "AsyncGeneratorType"):
             assert isinstance(
                 bases.AsyncGenerator.special_attributes, objectmodel.AsyncGeneratorModel
@@ -627,7 +628,7 @@ class GeneratorModelTest(unittest.TestCase):
         )
         gen_instance = next(gen_node.infer())
         assert isinstance(gen_instance, bases.Generator)
-        assert isinstance(bases.Generator.special_attributes, objectmodel.GeneratorModel)
+        assert bases.Generator.special_attributes is generator_model
 
     def test_model(self) -> None:
         ast_nodes = builder.extract_node("""
