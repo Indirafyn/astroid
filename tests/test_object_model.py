@@ -9,7 +9,7 @@ import xml
 import pytest
 
 import astroid
-from astroid import bases, builder, nodes, objects, util
+from astroid import bases, builder, nodes, objects, raw_building, util
 from astroid.const import PY311_PLUS
 from astroid.exceptions import InferenceError
 from astroid.interpreter import objectmodel
@@ -609,14 +609,8 @@ class TestContextManagerModel:
 
 class GeneratorModelTest(unittest.TestCase):
     def test_special_attributes_initialized(self) -> None:
-        ast_node = builder.extract_node(
-            """
-        def test():
-            yield
-        """
-        )
-        assert isinstance(ast_node, nodes.FunctionDef)
-        assert ast_node.is_generator()
+        if not raw_building.InspectBuilder.bootstrapped:
+            astroid.MANAGER.bootstrap()
         assert isinstance(bases.Generator.special_attributes, objectmodel.GeneratorModel)
         if hasattr(types, "AsyncGeneratorType"):
             assert isinstance(
