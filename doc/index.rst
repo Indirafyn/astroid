@@ -67,6 +67,7 @@ tools.
    inference
 
    extending
+   refactoring
 
    api/index
 
