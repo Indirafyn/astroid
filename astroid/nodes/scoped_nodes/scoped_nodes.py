@@ -67,6 +67,7 @@ EXCEPTION_BASE_CLASSES = frozenset({"Exception", "BaseException"})
 BUILTIN_DESCRIPTORS = frozenset(
     {"classmethod", "staticmethod", "builtins.classmethod", "builtins.staticmethod"}
 )
+CLASSMETHOD_SPECIAL_METHODS = frozenset({"__new__", "__init_subclass__", "__class_getitem__"})
 
 
 def _c3_merge(sequences, cls, context):
@@ -1326,11 +1327,9 @@ class FunctionDef(
         frame = self.parent.frame()
         type_name = "function"
         if isinstance(frame, ClassDef):
-            if self.name == "__new__":
-                return "classmethod"
-            if self.name == "__init_subclass__":
-                return "classmethod"
-            if self.name == "__class_getitem__":
+            # Refactoring type: Replace Magic Values with Named Constant.
+            # Change: grouped special classmethod-like method names into one constant.
+            if self.name in CLASSMETHOD_SPECIAL_METHODS:
                 return "classmethod"
 
             type_name = "method"
