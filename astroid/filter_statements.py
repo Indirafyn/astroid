@@ -51,7 +51,7 @@ def _resolve_filter_context(
     base_node: _base_nodes.LookupMixIn,
     frame: nodes.LocalsDictNodeNG,
     offset: int,
-) -> tuple[nodes.NodeNG, _base_nodes.Statement | None, int]:
+) -> tuple[_base_nodes.Statement | None, int]:
     # Refactoring type: Extract Method.
     # Change: pulled frame/statement/line-filter setup out of _filter_stmts.
     # if offset == -1, my actual frame is not the inner frame but its parent
@@ -71,7 +71,7 @@ def _resolve_filter_context(
         mylineno = mystmt.fromlineno + offset
     else:
         mylineno = 0
-    return myframe, mystmt, mylineno
+    return mystmt, mylineno
 
 
 def _append_stmt_parent(
@@ -117,7 +117,7 @@ def _filter_stmts(
     #
     # take care node may be missing lineno information (this is the case for
     # nodes inserted for living objects)
-    _myframe, mystmt, mylineno = _resolve_filter_context(base_node, frame, offset)
+    mystmt, mylineno = _resolve_filter_context(base_node, frame, offset)
 
     _stmts: list[nodes.NodeNG] = []
     _stmt_parents = []

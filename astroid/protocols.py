@@ -723,7 +723,7 @@ def _infer_starred_assign(
 
     if sum(1 for _ in lhs.nodes_of_class(nodes.Starred)) > 1:
         raise InferenceError(
-            "Too many starred arguments in the assignment targets {lhs!r}.",
+            f"Too many starred arguments in the assignment targets {lhs!r}.",
             node=starred_node,
             targets=lhs,
             unknown=node,
@@ -815,7 +815,7 @@ def _infer_starred_for(
         for index, lookup in enumerate(lookups):
             if not hasattr(element, "itered"):
                 break
-            if index + 1 is len(lookups):
+            if index + 1 == len(lookups):
                 cur_lookup: slice | int = last_lookup
             else:
                 cur_lookup = lookup[0]

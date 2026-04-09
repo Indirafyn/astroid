@@ -215,7 +215,7 @@ class AstroidManager:
             named_module = load_module_from_name(modname)
         except Exception as e:
             raise AstroidImportError(
-                "Loading {modname} failed with:\n{error}",
+                f"Loading {modname} failed with:\n{e}",
                 modname=modname,
                 path=found_spec.location,
             ) from e
