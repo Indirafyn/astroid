@@ -47,6 +47,50 @@ def _get_if_statement_ancestor(node: nodes.NodeNG) -> nodes.If | None:
     return None
 
 
+def _resolve_filter_context(
+    base_node: _base_nodes.LookupMixIn,
+    frame: nodes.LocalsDictNodeNG,
+    offset: int,
+) -> tuple[nodes.NodeNG, _base_nodes.Statement | None, int]:
+    # Refactoring type: Extract Method.
+    # Change: pulled frame/statement/line-filter setup out of _filter_stmts.
+    # if offset == -1, my actual frame is not the inner frame but its parent
+    if offset == -1:
+        myframe = base_node.frame().parent.frame()
+    else:
+        myframe = base_node.frame()
+        if base_node.parent and base_node.statement() is myframe and myframe.parent:
+            myframe = myframe.parent.frame()
+
+    mystmt: _base_nodes.Statement | None = None
+    if base_node.parent:
+        mystmt = base_node.statement()
+
+    if myframe is frame and mystmt and mystmt.fromlineno is not None:
+        assert mystmt.fromlineno is not None, mystmt
+        mylineno = mystmt.fromlineno + offset
+    else:
+        mylineno = 0
+    return myframe, mystmt, mylineno
+
+
+def _append_stmt_parent(
+    node: nodes.NodeNG, stmt: _base_nodes.Statement, stmt_parents: list[nodes.NodeNG]
+) -> None:
+    # Refactoring type: Extract Method.
+    # Change: isolated _stmt_parents update logic from _filter_stmts.
+    if isinstance(node, nodes.Arguments) or isinstance(node.parent, nodes.Arguments):
+        # Special case for _stmt_parents when node is a function parameter;
+        # in this case, stmt is the enclosing FunctionDef, which is what we
+        # want to add to _stmt_parents, not stmt.parent. This case occurs when
+        # node is an Arguments node (representing varargs or kwargs parameter),
+        # and when node.parent is an Arguments node (other parameters).
+        # See issue #180.
+        stmt_parents.append(stmt)
+        return
+    stmt_parents.append(stmt.parent)
+
+
 def _filter_stmts(
     base_node: _base_nodes.LookupMixIn,
     stmts: list[SuccessfulInferenceResult],
@@ -69,43 +113,11 @@ def _filter_stmts(
     """
     # pylint: disable = too-many-branches, too-many-statements
 
-    # if offset == -1, my actual frame is not the inner frame but its parent
-    #
-    # class A(B): pass
-    #
-    # we need this to resolve B correctly
-    if offset == -1:
-        myframe = base_node.frame().parent.frame()
-    else:
-        myframe = base_node.frame()
-        # If the frame of this node is the same as the statement
-        # of this node, then the node is part of a class or
-        # a function definition and the frame of this node should be the
-        # the upper frame, not the frame of the definition.
-        # For more information why this is important,
-        # see Pylint issue #295.
-        # For example, for 'b', the statement is the same
-        # as the frame / scope:
-        #
-        # def test(b=1):
-        #     ...
-        if base_node.parent and base_node.statement() is myframe and myframe.parent:
-            myframe = myframe.parent.frame()
-
-    mystmt: _base_nodes.Statement | None = None
-    if base_node.parent:
-        mystmt = base_node.statement()
-
     # line filtering if we are in the same frame
     #
     # take care node may be missing lineno information (this is the case for
     # nodes inserted for living objects)
-    if myframe is frame and mystmt and mystmt.fromlineno is not None:
-        assert mystmt.fromlineno is not None, mystmt
-        mylineno = mystmt.fromlineno + offset
-    else:
-        # disabling lineno filtering
-        mylineno = 0
+    _myframe, mystmt, mylineno = _resolve_filter_context(base_node, frame, offset)
 
     _stmts: list[nodes.NodeNG] = []
     _stmt_parents = []
@@ -225,16 +237,5 @@ def _filter_stmts(
             continue
         # Add the new assignment
         _stmts.append(node)
-        if isinstance(node, nodes.Arguments) or isinstance(
-            node.parent, nodes.Arguments
-        ):
-            # Special case for _stmt_parents when node is a function parameter;
-            # in this case, stmt is the enclosing FunctionDef, which is what we
-            # want to add to _stmt_parents, not stmt.parent. This case occurs when
-            # node is an Arguments node (representing varargs or kwargs parameter),
-            # and when node.parent is an Arguments node (other parameters).
-            # See issue #180.
-            _stmt_parents.append(stmt)
-        else:
-            _stmt_parents.append(stmt.parent)
+        _append_stmt_parent(node, stmt, _stmt_parents)
     return _stmts

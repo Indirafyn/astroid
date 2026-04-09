@@ -192,6 +192,64 @@ class AstroidManager:
             modname, self.extension_package_whitelist
         )
 
+    # Refactoring type: Extract Method.
+    # Change: moved zip-module handling out of ast_from_module_name.
+    def _handle_zipmodule_spec(
+        self, modname: str, found_spec: spec.ModuleSpec
+    ) -> nodes.Module | None:
+        if found_spec.location is None:
+            return None
+        return self.zip_import_data(found_spec.location)
+
+    # Refactoring type: Extract Method.
+    # Change: moved native module handling out of ast_from_module_name.
+    def _handle_native_module_spec(
+        self, modname: str, found_spec: spec.ModuleSpec
+    ) -> nodes.Module:
+        if (
+            found_spec.type == spec.ModuleType.C_EXTENSION
+            and not self._can_load_extension(modname)
+        ):
+            return self._build_stub_module(modname)
+        try:
+            named_module = load_module_from_name(modname)
+        except Exception as e:
+            raise AstroidImportError(
+                "Loading {modname} failed with:\n{error}",
+                modname=modname,
+                path=found_spec.location,
+            ) from e
+        return self.ast_from_module(named_module, modname)
+
+    # Refactoring type: Extract Method.
+    # Change: moved namespace-module handling out of ast_from_module_name.
+    def _handle_namespace_module_spec(
+        self, modname: str, found_spec: spec.ModuleSpec
+    ) -> nodes.Module:
+        return self._build_namespace_module(modname, found_spec.submodule_search_locations or [])
+
+    # Refactoring type: Extract Method.
+    # Change: moved frozen-module handling out of ast_from_module_name.
+    def _handle_frozen_module_spec(
+        self, modname: str, found_spec: spec.ModuleSpec
+    ) -> nodes.Module:
+        if found_spec.location is None:
+            return self._build_stub_module(modname)
+        # For stdlib frozen modules we can determine the location and
+        # can therefore create a module from the source file
+        return self.ast_from_file(found_spec.location, modname, fallback=False)
+
+    # Refactoring type: Extract Method.
+    # Change: moved compiled-module error handling out of ast_from_module_name.
+    def _handle_compiled_module_spec(
+        self, modname: str, found_spec: spec.ModuleSpec
+    ) -> nodes.Module:
+        raise AstroidImportError(
+            "Unable to load compiled module {modname}.",
+            modname=modname,
+            path=found_spec.location,
+        )
+
     def ast_from_module_name(  # noqa: C901
         self,
         modname: str | None,
@@ -216,47 +274,23 @@ class AstroidManager:
             os.chdir(os.path.dirname(context_file))
         try:
             found_spec = self.file_from_module_name(modname, context_file)
-            if found_spec.type == spec.ModuleType.PY_ZIPMODULE:
-                module = self.zip_import_data(found_spec.location)
+            # Refactoring type: Replace Conditional with Dispatch Table.
+            # Change: replaced module-type if/elif chain with a handler lookup map.
+            module_type_handlers: dict[
+                spec.ModuleType, Callable[[str, spec.ModuleSpec], nodes.Module | None]
+            ] = {
+                spec.ModuleType.PY_ZIPMODULE: self._handle_zipmodule_spec,
+                spec.ModuleType.C_BUILTIN: self._handle_native_module_spec,
+                spec.ModuleType.C_EXTENSION: self._handle_native_module_spec,
+                spec.ModuleType.PY_COMPILED: self._handle_compiled_module_spec,
+                spec.ModuleType.PY_NAMESPACE: self._handle_namespace_module_spec,
+                spec.ModuleType.PY_FROZEN: self._handle_frozen_module_spec,
+            }
+            type_handler = module_type_handlers.get(found_spec.type)
+            if type_handler is not None:
+                module = type_handler(modname, found_spec)
                 if module is not None:
                     return module
-
-            elif found_spec.type in (
-                spec.ModuleType.C_BUILTIN,
-                spec.ModuleType.C_EXTENSION,
-            ):
-                if (
-                    found_spec.type == spec.ModuleType.C_EXTENSION
-                    and not self._can_load_extension(modname)
-                ):
-                    return self._build_stub_module(modname)
-                try:
-                    named_module = load_module_from_name(modname)
-                except Exception as e:
-                    raise AstroidImportError(
-                        "Loading {modname} failed with:\n{error}",
-                        modname=modname,
-                        path=found_spec.location,
-                    ) from e
-                return self.ast_from_module(named_module, modname)
-
-            elif found_spec.type == spec.ModuleType.PY_COMPILED:
-                raise AstroidImportError(
-                    "Unable to load compiled module {modname}.",
-                    modname=modname,
-                    path=found_spec.location,
-                )
-
-            elif found_spec.type == spec.ModuleType.PY_NAMESPACE:
-                return self._build_namespace_module(
-                    modname, found_spec.submodule_search_locations or []
-                )
-            elif found_spec.type == spec.ModuleType.PY_FROZEN:
-                if found_spec.location is None:
-                    return self._build_stub_module(modname)
-                # For stdlib frozen modules we can determine the location and
-                # can therefore create a module from the source file
-                return self.ast_from_file(found_spec.location, modname, fallback=False)
 
             if found_spec.location is None:
                 raise AstroidImportError(

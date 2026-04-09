@@ -138,6 +138,152 @@ class CallSite:
                 values.append(arg)
         return values
 
+    # Refactoring type: Extract Method.
+    # Change: pulled call-site argument preparation into a helper.
+    def _prepare_argument_inference_inputs(
+        self, funcnode: nodes.FunctionDef | nodes.Lambda, name: str, context: InferenceContext
+    ) -> tuple[list[InferenceResult], list[InferenceResult], dict[str | None, InferenceResult], int | None]:
+        if len(self.positional_arguments) > len(funcnode.args.args):
+            if not funcnode.args.vararg and not funcnode.args.posonlyargs:
+                raise InferenceError(
+                    "Too many positional arguments "
+                    "passed to {func!r} that does "
+                    "not have *args.",
+                    call_site=self,
+                    func=funcnode,
+                    arg=name,
+                    context=context,
+                )
+
+        positional = self.positional_arguments[: len(funcnode.args.args)]
+        vararg = self.positional_arguments[len(funcnode.args.args) :]
+
+        if name in [funcnode.args.vararg, funcnode.args.kwarg]:
+            argindex = None
+        else:
+            argindex = funcnode.args.find_argname(name)[0]
+
+        kwonlyargs = {arg.name for arg in funcnode.args.kwonlyargs}
+        kwargs = {
+            key: value
+            for key, value in self.keyword_arguments.items()
+            if key not in kwonlyargs
+        }
+
+        if len(positional) < len(funcnode.args.args):
+            for func_arg in funcnode.args.args:
+                if func_arg.name in kwargs:
+                    arg = kwargs.pop(func_arg.name)
+                    positional.append(arg)
+
+        return positional, vararg, kwargs, argindex
+
+    # Refactoring type: Extract Method.
+    # Change: isolated bound-method/arg-index resolution logic.
+    def _infer_from_arg_index(
+        self,
+        funcnode: nodes.FunctionDef | nodes.Lambda,
+        argindex: int | None,
+        positional: list[InferenceResult],
+        context: InferenceContext,
+    ):
+        if argindex is None:
+            return None
+
+        boundnode = context.boundnode
+        if argindex == 0 and funcnode.type in {"method", "classmethod"}:
+            if boundnode is None and funcnode.type == "method" and positional:
+                return positional[0].infer(context=context)
+            if boundnode is None:
+                boundnode = funcnode.parent.frame()
+
+            if isinstance(boundnode, nodes.ClassDef):
+                method_scope = funcnode.parent.scope()
+                if method_scope is boundnode.metaclass(context=context):
+                    return iter((boundnode,))
+
+            if funcnode.type == "method":
+                if not isinstance(boundnode, Instance):
+                    boundnode = boundnode.instantiate_class()
+                return iter((boundnode,))
+            if funcnode.type == "classmethod":
+                return iter((boundnode,))
+
+        if funcnode.type in {"method", "classmethod"} and boundnode:
+            argindex -= 1
+        try:
+            return self.positional_arguments[argindex].infer(context)
+        except IndexError:
+            return None
+
+    # Refactoring type: Extract Method.
+    # Change: grouped kwargs/varargs/default fallback inference.
+    def _infer_variadic_or_default(
+        self,
+        funcnode: nodes.FunctionDef | nodes.Lambda,
+        name: str,
+        kwargs: dict[str | None, InferenceResult],
+        vararg: list[InferenceResult],
+        context: InferenceContext,
+    ):
+        if funcnode.args.kwarg == name:
+            if self.has_invalid_keywords():
+                raise InferenceError(
+                    "Inference failed to find values for all keyword arguments "
+                    "to {func!r}: {unpacked_kwargs!r} doesn't correspond to "
+                    "{keyword_arguments!r}.",
+                    keyword_arguments=self.keyword_arguments,
+                    unpacked_kwargs=self._unpacked_kwargs,
+                    call_site=self,
+                    func=funcnode,
+                    arg=name,
+                    context=context,
+                )
+            kwarg = nodes.Dict(
+                lineno=funcnode.args.lineno,
+                col_offset=funcnode.args.col_offset,
+                parent=funcnode.args,
+                end_lineno=funcnode.args.end_lineno,
+                end_col_offset=funcnode.args.end_col_offset,
+            )
+            kwarg.postinit(
+                [(nodes.const_factory(key), value) for key, value in kwargs.items()]
+            )
+            return iter((kwarg,))
+
+        if funcnode.args.vararg == name:
+            if self.has_invalid_arguments():
+                raise InferenceError(
+                    "Inference failed to find values for all positional "
+                    "arguments to {func!r}: {unpacked_args!r} doesn't "
+                    "correspond to {positional_arguments!r}.",
+                    positional_arguments=self.positional_arguments,
+                    unpacked_args=self._unpacked_args,
+                    call_site=self,
+                    func=funcnode,
+                    arg=name,
+                    context=context,
+                )
+            args = nodes.Tuple(
+                lineno=funcnode.args.lineno,
+                col_offset=funcnode.args.col_offset,
+                parent=funcnode.args,
+            )
+            args.postinit(vararg)
+            return iter((args,))
+
+        try:
+            return funcnode.args.default_value(name).infer(context)
+        except NoDefault:
+            pass
+        raise InferenceError(
+            "No value found for argument {arg} to {func!r}",
+            call_site=self,
+            func=funcnode,
+            arg=name,
+            context=context,
+        )
+
     def infer_argument(
         self, funcnode: InferenceResult, name: str, context: InferenceContext
     ):  # noqa: C901
@@ -168,142 +314,10 @@ class CallSite:
         except KeyError:
             pass
 
-        # Too many arguments given and no variable arguments.
-        if len(self.positional_arguments) > len(funcnode.args.args):
-            if not funcnode.args.vararg and not funcnode.args.posonlyargs:
-                raise InferenceError(
-                    "Too many positional arguments "
-                    "passed to {func!r} that does "
-                    "not have *args.",
-                    call_site=self,
-                    func=funcnode,
-                    arg=name,
-                    context=context,
-                )
-
-        positional = self.positional_arguments[: len(funcnode.args.args)]
-        vararg = self.positional_arguments[len(funcnode.args.args) :]
-
-        # preserving previous behavior, when vararg and kwarg were not included in find_argname results
-        if name in [funcnode.args.vararg, funcnode.args.kwarg]:
-            argindex = None
-        else:
-            argindex = funcnode.args.find_argname(name)[0]
-
-        kwonlyargs = {arg.name for arg in funcnode.args.kwonlyargs}
-        kwargs = {
-            key: value
-            for key, value in self.keyword_arguments.items()
-            if key not in kwonlyargs
-        }
-        # If there are too few positionals compared to
-        # what the function expects to receive, check to see
-        # if the missing positional arguments were passed
-        # as keyword arguments and if so, place them into the
-        # positional args list.
-        if len(positional) < len(funcnode.args.args):
-            for func_arg in funcnode.args.args:
-                if func_arg.name in kwargs:
-                    arg = kwargs.pop(func_arg.name)
-                    positional.append(arg)
-
-        if argindex is not None:
-            boundnode = context.boundnode
-            # 2. first argument of instance/class method
-            if argindex == 0 and funcnode.type in {"method", "classmethod"}:
-                # context.boundnode is None when an instance method is called with
-                # the class, e.g. MyClass.method(obj, ...). In this case, self
-                # is the first argument.
-                if boundnode is None and funcnode.type == "method" and positional:
-                    return positional[0].infer(context=context)
-                if boundnode is None:
-                    # XXX can do better ?
-                    boundnode = funcnode.parent.frame()
-
-                if isinstance(boundnode, nodes.ClassDef):
-                    # Verify that we're accessing a method
-                    # of the metaclass through a class, as in
-                    # `cls.metaclass_method`. In this case, the
-                    # first argument is always the class.
-                    method_scope = funcnode.parent.scope()
-                    if method_scope is boundnode.metaclass(context=context):
-                        return iter((boundnode,))
-
-                if funcnode.type == "method":
-                    if not isinstance(boundnode, Instance):
-                        boundnode = boundnode.instantiate_class()
-                    return iter((boundnode,))
-                if funcnode.type == "classmethod":
-                    return iter((boundnode,))
-            # if we have a method, extract one position
-            # from the index, so we'll take in account
-            # the extra parameter represented by `self` or `cls`
-            if funcnode.type in {"method", "classmethod"} and boundnode:
-                argindex -= 1
-            # 2. search arg index
-            try:
-                return self.positional_arguments[argindex].infer(context)
-            except IndexError:
-                pass
-
-        if funcnode.args.kwarg == name:
-            # It wants all the keywords that were passed into
-            # the call site.
-            if self.has_invalid_keywords():
-                raise InferenceError(
-                    "Inference failed to find values for all keyword arguments "
-                    "to {func!r}: {unpacked_kwargs!r} doesn't correspond to "
-                    "{keyword_arguments!r}.",
-                    keyword_arguments=self.keyword_arguments,
-                    unpacked_kwargs=self._unpacked_kwargs,
-                    call_site=self,
-                    func=funcnode,
-                    arg=name,
-                    context=context,
-                )
-            kwarg = nodes.Dict(
-                lineno=funcnode.args.lineno,
-                col_offset=funcnode.args.col_offset,
-                parent=funcnode.args,
-                end_lineno=funcnode.args.end_lineno,
-                end_col_offset=funcnode.args.end_col_offset,
-            )
-            kwarg.postinit(
-                [(nodes.const_factory(key), value) for key, value in kwargs.items()]
-            )
-            return iter((kwarg,))
-        if funcnode.args.vararg == name:
-            # It wants all the args that were passed into
-            # the call site.
-            if self.has_invalid_arguments():
-                raise InferenceError(
-                    "Inference failed to find values for all positional "
-                    "arguments to {func!r}: {unpacked_args!r} doesn't "
-                    "correspond to {positional_arguments!r}.",
-                    positional_arguments=self.positional_arguments,
-                    unpacked_args=self._unpacked_args,
-                    call_site=self,
-                    func=funcnode,
-                    arg=name,
-                    context=context,
-                )
-            args = nodes.Tuple(
-                lineno=funcnode.args.lineno,
-                col_offset=funcnode.args.col_offset,
-                parent=funcnode.args,
-            )
-            args.postinit(vararg)
-            return iter((args,))
-
-        # Check if it's a default parameter.
-        try:
-            return funcnode.args.default_value(name).infer(context)
-        except NoDefault:
-            pass
-        raise InferenceError(
-            "No value found for argument {arg} to {func!r}",
-            call_site=self,
-            func=funcnode,
-            arg=name,
-            context=context,
+        positional, vararg, kwargs, argindex = self._prepare_argument_inference_inputs(
+            funcnode, name, context
         )
+        inferred = self._infer_from_arg_index(funcnode, argindex, positional, context)
+        if inferred is not None:
+            return inferred
+        return self._infer_variadic_or_default(funcnode, name, kwargs, vararg, context)
